@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Comparador Pro - Enlace Visual</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; padding: 20px; }
+        .main-container { max-width: 1300px; margin: 0 auto; }
+        .panels { display: flex; gap: 20px; margin-top: 20px; }
+        .panel { flex: 1; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        textarea { width: 100%; height: 80px; padding: 10px; border: 1px solid #ddd; border-radius: 6px; resize: none; }
+        .display-area { min-height: 250px; padding: 15px; background: #fafafa; border: 1px dashed #ccc; border-radius: 6px; line-height: 1.8; white-space: pre-wrap; margin-top: 10px; font-size: 16px; }
+        
+        /* Estilo base del subrayado */
+        mark { 
+            background-color: #90caf9; 
+            color: #0d47a1; 
+            border-radius: 3px; 
+            padding: 1px 2px; 
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        /* Clase que aplicaremos por JS al pasar el mouse */
+        mark.active-pair {
+            background-color: #4caf50 !important; /* Verde */
+            color: white !important;
+            transform: scale(1.1);
+            display: inline-block;
+        }
+
+        .controls { text-align: center; }
+        button { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="main-container">
+    <div class="controls">
+        <h2>Comparador con Enlace Visual</h2>
+        <p>Pasa el mouse sobre una palabra azul para ver su pareja en el otro texto.</p>
+        <button onclick="limpiar()">Limpiar</button>
+    </div>
+
+    <div class="panels">
+        <div class="panel">
+            <label>Texto 1</label>
+            <textarea id="in1" oninput="procesar()"></textarea>
+            <div id="out1" class="display-area"></div>
+        </div>
+        <div class="panel">
+            <label>Texto 2</label>
+            <textarea id="in2" oninput="procesar()"></textarea>
+            <div id="out2" class="display-area"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function normalizar(p) {
+        return p.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_~()¿?¡!"\s]/g, "");
+    }
+
+    function procesar() {
+        const raw1 = document.getElementById('in1').value.split(/(\s+)/);
+        const raw2 = document.getElementById('in2').value.split(/(\s+)/);
+
+        const clean1 = raw1.map(w => normalizar(w));
+        const clean2 = raw2.map(w => normalizar(w));
+
+        const wordsOnly1 = clean1.filter(w => w !== "");
+        const wordsOnly2 = clean2.filter(w => w !== "");
+
+        // Algoritmo LCS para máxima coincidencia
+        const m = wordsOnly1.length;
+        const n = wordsOnly2.length;
+        let dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+
+        for (let i = 1; i <= m; i++) {
+            for (let j = 1; j <= n; j++) {
+                if (wordsOnly1[i-1] === wordsOnly2[j-1]) {
+                    dp[i][j] = dp[i-1][j-1] + 1;
+                } else {
+                    dp[i][j] = Math.max(dp[i-1][j], dp[i][j-1]);
+                }
+            }
+        }
+
+        // Mapa de parejas (Index1 -> Index2)
+        let pairs = new Map();
+        let i = m, j = n;
+        while (i > 0 && j > 0) {
+            if (wordsOnly1[i-1] === wordsOnly2[j-1]) {
+                const idx1 = getOriginalIndex(raw1, i-1);
+                const idx2 = getOriginalIndex(raw2, j-1);
+                pairs.set(idx1, idx2);
+                i--; j--;
+            } else if (dp[i-1][j] >= dp[i][j-1]) {
+                i--;
+            } else {
+                j--;
+            }
+        }
+
+        // Renderizar con IDs únicos de pareja
+        document.getElementById('out1').innerHTML = renderizar(raw1, pairs, true);
+        document.getElementById('out2').innerHTML = renderizar(raw2, pairs, false);
+        
+        asignarEventos();
+    }
+
+    function getOriginalIndex(rawArray, cleanTargetIndex) {
+        let count = -1;
+        for (let k = 0; k < rawArray.length; k++) {
+            if (normalizar(rawArray[k]) !== "") {
+                count++;
+                if (count === cleanTargetIndex) return k;
+            }
+        }
+        return -1;
+    }
+
+    function renderizar(array, pairsMap, isLeft) {
+        return array.map((word, idx) => {
+            let pairId = -1;
+            if (isLeft && pairsMap.has(idx)) {
+                pairId = idx + "_" + pairsMap.get(idx);
+            } else if (!isLeft) {
+                // Buscar si este índice es pareja de alguno del lado izquierdo
+                for (let [leftIdx, rightIdx] of pairsMap) {
+                    if (rightIdx === idx) {
+                        pairId = leftIdx + "_" + rightIdx;
+                        break;
+                    }
+                }
+            }
+
+            if (pairId !== -1) {
+                return `<mark data-pair="${pairId}">${word}</mark>`;
+            }
+            return word;
+        }).join('');
+    }
+
+    function asignarEventos() {
+        const marks = document.querySelectorAll('mark');
+        marks.forEach(m => {
+            m.onmouseover = function() {
+                const id = this.getAttribute('data-pair');
+                document.querySelectorAll(`mark[data-pair="${id}"]`).forEach(el => {
+                    el.classList.add('active-pair');
+                });
+            };
+            m.onmouseout = function() {
+                const id = this.getAttribute('data-pair');
+                document.querySelectorAll(`mark[data-pair="${id}"]`).forEach(el => {
+                    el.classList.remove('active-pair');
+                });
+            };
+        });
+    }
+
+    function limpiar() {
+        document.getElementById('in1').value = "";
+        document.getElementById('in2').value = "";
+        procesar();
+    }
+</script>
+</body>
+</html>
